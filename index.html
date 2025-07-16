@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23333' d='M23,13V11H21V7A1,1 0 0,0 20,6H16V4A1,1 0 0,0 15,3H9A1,1 0 0,0 8,4V6H4A1,1 0 0,0 3,7V11H1V13H3V17A1,1 0 0,0 4,18H8V20A1,1 0 0,0 9,21H15A1,1 0 0,0 16,20V18H20A1,1 0 0,0 21,17V13H23M11,8H13V10H11V8M11,12H13V14H11V12M11,16H13V18H11V16Z' /%3E%3C/svg%3E" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Play the classic Minesweeper game with multiple difficulty levels and dark mode support" />
+    <title>Minesweeper Game</title>
+    <!-- Check for dark mode preference -->
+    <script>
+      (function() {
+        // Check localStorage first
+        const savedMode = localStorage.getItem('minesweeper_darkMode');
+        if (savedMode !== null) {
+          if (JSON.parse(savedMode)) {
+            document.documentElement.classList.add('dark');
+          }
+        } 
+        // If no saved preference, check system preference
+        else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.classList.add('dark');
+          localStorage.setItem('minesweeper_darkMode', JSON.stringify(true));
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
