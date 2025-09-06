@@ -56,9 +56,11 @@ function App() {
       const container = boardRef.current?.parentElement // outer flex center container
       const available = container ? container.clientWidth : window.innerWidth
       const padding = 0 // no inner padding on .game-board
-      const maxCell = 44
+      const maxCell = Number.POSITIVE_INFINITY // let beginner expand to fill
       const minCell = 22
-      const computed = Math.floor((available - padding) / cols)
+      const border = 2 // each cell has Tailwind border-2
+      // Use fractional pixels so the grid can truly fill the row
+      const computed = ((available - padding - (cols * border * 2)) / cols)
       setCellSize(Math.max(minCell, Math.min(maxCell, computed)))
     }
     recalc()

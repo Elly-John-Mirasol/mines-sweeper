@@ -99,6 +99,7 @@ h1.text-4xl {
 .game-board {
   /* Remove inner padding so the grid can occupy the full panel */
   padding: 0;
+  width: 100%;
   border-radius: 10px;
   box-shadow: 0 6px 16px rgba(0,0,0,0.15);
   border: 1px solid rgba(0,0,0,0.15);
