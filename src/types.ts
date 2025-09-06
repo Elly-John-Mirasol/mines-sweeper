@@ -4,6 +4,8 @@ export interface Cell {
   isRevealed: boolean;
   isFlagged: boolean;
   neighborMines: number;
+  // Optional question mark state (cycle: none -> flag -> question -> none)
+  hasQuestionMark?: boolean;
 }
 
 // Board is a 2D array of Cells

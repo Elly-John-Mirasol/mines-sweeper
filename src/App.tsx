@@ -1,15 +1,23 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
 import { Board, Cell, DifficultyLevel, GameConfig, GameStatus, HighScores } from './types'
 
 function App() {
-  const [difficulty, setDifficulty] = useState<DifficultyLevel>('beginner')
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>(() => {
+    const saved = localStorage.getItem('minesweeper_difficulty') as DifficultyLevel | null
+    return saved === 'beginner' || saved === 'intermediate' || saved === 'expert' ? saved : 'beginner'
+  })
   const [board, setBoard] = useState<Board>([])
   const [gameStatus, setGameStatus] = useState<GameStatus>('waiting')
   const [minesLeft, setMinesLeft] = useState<number>(0)
   const [time, setTime] = useState<number>(0)
   const [timerInterval, setTimerInterval] = useState<number | null>(null)
   const [isFirstClick, setIsFirstClick] = useState<boolean>(true)
+  const [hintsLeft, setHintsLeft] = useState<number>(3)
+  const longPressTimer = useRef<number | null>(null)
+  // (legacy scale removed; using dynamic cell size instead)
+  const boardRef = useRef<HTMLDivElement | null>(null)
+  const [cellSize, setCellSize] = useState<number>(40)
   const [highScores, setHighScores] = useState<HighScores>({
     beginner: parseInt(localStorage.getItem('highScore_beginner') || '999'),
     intermediate: parseInt(localStorage.getItem('highScore_intermediate') || '999'),
@@ -36,6 +44,31 @@ function App() {
     }
   }, [darkMode])
 
+  // Persist difficulty selection
+  useEffect(() => {
+    localStorage.setItem('minesweeper_difficulty', difficulty)
+  }, [difficulty])
+
+  // Compute responsive cell size based on wrapper width and columns
+  useEffect(() => {
+    const recalc = () => {
+      const cols = gameConfig[difficulty].cols
+      const container = boardRef.current?.parentElement // outer flex center container
+      const available = container ? container.clientWidth : window.innerWidth
+      const padding = 0 // no inner padding on .game-board
+      const maxCell = 44
+      const minCell = 22
+      const computed = Math.floor((available - padding) / cols)
+      setCellSize(Math.max(minCell, Math.min(maxCell, computed)))
+    }
+    recalc()
+    window.addEventListener('resize', recalc)
+    return () => window.removeEventListener('resize', recalc)
+  }, [difficulty])
+
+  const getHintsFor = (dif: DifficultyLevel): number =>
+    dif === 'beginner' ? 3 : dif === 'intermediate' ? 2 : 1
+
   // Game configurations
   const gameConfig: Record<DifficultyLevel, GameConfig> = {
     beginner: { rows: 9, cols: 9, mines: 10 },
@@ -56,7 +89,8 @@ function App() {
         isMine: false,
         isRevealed: false,
         isFlagged: false,
-        neighborMines: 0
+        neighborMines: 0,
+        hasQuestionMark: false,
       }))
     )
     
@@ -110,6 +144,7 @@ function App() {
     }
     
     initializeBoard()
+    setHintsLeft(getHintsFor(difficulty))
   }
 
   // Start the timer
@@ -280,29 +315,59 @@ function App() {
     }
   }
 
-  // Toggle flag on a cell
-  const toggleFlag = (e: React.MouseEvent, row: number, col: number): void => {
-    e.preventDefault() // Prevent context menu from opening
-    
+  // Base flag toggle with cycle (none -> flag -> question -> none)
+  const toggleFlagAt = (row: number, col: number): void => {
     if (gameStatus === 'lost' || gameStatus === 'won' || board[row][col].isRevealed) return
     
-    // Start the game and timer on first click
     if (gameStatus === 'waiting') {
       setGameStatus('playing')
       startTimer()
     }
     
-    // Copy the board to avoid direct mutation
     const newBoard: Board = JSON.parse(JSON.stringify(board))
+    const cell = newBoard[row][col]
+    const wasFlagged = cell.isFlagged
     
-    newBoard[row][col].isFlagged = !newBoard[row][col].isFlagged
+    if (!cell.isFlagged && !cell.hasQuestionMark) {
+      // none -> flag
+      cell.isFlagged = true
+      cell.hasQuestionMark = false
+    } else if (cell.isFlagged) {
+      // flag -> question
+      cell.isFlagged = false
+      cell.hasQuestionMark = true
+    } else {
+      // question -> none
+      cell.isFlagged = false
+      cell.hasQuestionMark = false
+    }
     
-    // Update mines left count
-    setMinesLeft(prevMinesLeft => 
-      newBoard[row][col].isFlagged ? prevMinesLeft - 1 : prevMinesLeft + 1
-    )
-    
+    setMinesLeft(prev => (wasFlagged && !cell.isFlagged) ? prev + 1 : (!wasFlagged && cell.isFlagged) ? prev - 1 : prev)
     setBoard(newBoard)
+  }
+
+  // Improved status emoji renderer
+  const getStatusFace = (): string => {
+    if (gameStatus === 'won') return '😎'
+    if (gameStatus === 'lost') return '😵'
+    return isFirstClick ? '🙂' : '😐'
+  }
+
+  // Improved cell content renderer with icons and question marks
+  const getCellContent2 = (cell: Cell): React.ReactNode => {
+    if (!cell.isRevealed) {
+      if (cell.isFlagged) return <span>🚩</span>
+      if (cell.hasQuestionMark) return <span>❓</span>
+      return ''
+    }
+    if (cell.isMine) return <span>💣</span>
+    return cell.neighborMines === 0 ? '' : cell.neighborMines
+  }
+
+  // Toggle flag on right-click
+  const toggleFlag = (e: React.MouseEvent, row: number, col: number): void => {
+    e.preventDefault() // Prevent context menu from opening
+    toggleFlagAt(row, col)
   }
 
   // Reveal all mines when game is lost
@@ -389,6 +454,8 @@ function App() {
       
       if (cell.isFlagged) {
         baseClass += "text-red-600 font-bold animate-pop"
+      } else if (cell.hasQuestionMark) {
+        baseClass += "text-yellow-500 italic"
       }
     } else {
       baseClass += darkMode
@@ -435,6 +502,71 @@ function App() {
     return isFirstClick ? '🙂' : '😊'
   }
 
+  // Hint: reveal a random safe cell
+  const useHint = (): void => {
+    if (hintsLeft <= 0 || gameStatus === 'lost' || gameStatus === 'won') return
+    const { rows, cols } = gameConfig[difficulty]
+    const candidates: Array<{ r: number, c: number }> = []
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cell = board[r][c]
+        if (!cell.isMine && !cell.isRevealed && !cell.isFlagged) candidates.push({ r, c })
+      }
+    }
+    if (candidates.length === 0) return
+    const pick = candidates[Math.floor(Math.random() * candidates.length)]
+    if (gameStatus === 'waiting') {
+      setGameStatus('playing')
+      startTimer()
+    }
+    const newBoard: Board = JSON.parse(JSON.stringify(board))
+    const cell = newBoard[pick.r][pick.c]
+    cell.isRevealed = true
+    if (cell.neighborMines === 0) {
+      floodFill(newBoard, pick.r, pick.c)
+    }
+    setHintsLeft(prev => Math.max(0, prev - 1))
+    checkWinCondition(newBoard)
+    setBoard(newBoard)
+  }
+
+  // Mobile long-press to toggle flag
+  const handleTouchStart = (row: number, col: number) => {
+    if (longPressTimer.current) window.clearTimeout(longPressTimer.current)
+    longPressTimer.current = window.setTimeout(() => {
+      toggleFlagAt(row, col)
+    }, 450)
+  }
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+      window.clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target && (e.target as HTMLElement).tagName === 'INPUT') return
+      const k = e.key.toLowerCase()
+      if (k === 'r') startNewGame()
+      if (k === 'h') useHint()
+      if (e.key === '1') setDifficulty('beginner')
+      if (e.key === '2') setDifficulty('intermediate')
+      if (e.key === '3') setDifficulty('expert')
+      if (k === 'd') toggleDarkMode()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [startNewGame, useHint, toggleDarkMode])
+
+  // Read old helpers to avoid TS unused warnings if present
+  // These are legacy and superseded by getCellContent2/getStatusFace
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  void (getCellContent as any)
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  void (getStatusEmoji as any)
+
   return (
     <div className="game-container">
       <div className="w-full max-w-md mx-auto mb-6 flex flex-col items-center">
@@ -450,7 +582,7 @@ function App() {
         </div>
         
         {/* Game controls */}
-        <div className="mb-4 flex flex-col sm:flex-row gap-4 items-center w-full">
+        <div className="mb-4 flex flex-wrap items-center gap-2 w-full">
           <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
             <button 
               onClick={() => setDifficulty('beginner')}
@@ -472,17 +604,39 @@ function App() {
             </button>
           </div>
           
-          <button 
-            onClick={startNewGame}
-            className="btn btn-success ml-auto mt-3 sm:mt-0"
-          >
-            New Game
-          </button>
+          <div className="flex flex-wrap items-center gap-2" style={{ marginLeft: 'auto' }}>
+            <button 
+              onClick={useHint}
+              disabled={hintsLeft <= 0 || gameStatus === 'lost' || gameStatus === 'won'}
+              className="btn btn-secondary"
+              title="Reveal a safe cell (H)"
+            >
+              Hint ({hintsLeft})
+            </button>
+            <button 
+              onClick={startNewGame}
+              className="btn btn-success"
+              title="Start a new game (R)"
+            >
+              New Game
+            </button>
+          </div>
         </div>
         
         {/* High scores */}
-        <div className="mb-4 text-sm font-medium">
-          Best time: <span className="font-mono">{formatTime(highScores[difficulty])}</span>
+        <div className="mb-4 text-sm font-medium flex items-center gap-3">
+          <span>Best time: <span className="font-mono">{formatTime(highScores[difficulty])}</span></span>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              const updated = { ...highScores, [difficulty]: 999 }
+              setHighScores(updated)
+              localStorage.setItem(`highScore_${difficulty}`, '999')
+            }}
+            title="Reset best time for this difficulty"
+          >
+            Reset Best
+          </button>
         </div>
         
         {/* Game status */}
@@ -499,7 +653,7 @@ function App() {
             className="text-2xl hover:scale-110 transition-transform mx-2"
             aria-label="Start new game"
           >
-            {getStatusEmoji()}
+            {getStatusFace()}
           </button>
           
           <div className="tooltip">
@@ -513,13 +667,20 @@ function App() {
       
       {/* Game board - centered and responsive */}
       <div className="w-full flex justify-center items-center mb-6">
-        <div className={`game-board ${darkMode ? 'bg-gray-800' : 'bg-gray-400'} ${gameStatus === 'lost' ? 'shake' : ''}`}>
+        <div ref={boardRef} className={`game-board ${darkMode ? 'bg-gray-800' : 'bg-gray-400'} ${gameStatus === 'lost' ? 'shake' : ''}`}>
           {board.map((row, rowIndex) => (
-            <div key={rowIndex} className="flex">
+            <div key={rowIndex} className="flex" style={{ gap: 0 }}>
               {row.map((cell, colIndex) => (
                 <button
                   key={`${rowIndex}-${colIndex}`}
                   className={getCellClass(cell)}
+                  style={{
+                    width: cellSize,
+                    height: cellSize,
+                    minWidth: cellSize,
+                    minHeight: cellSize,
+                    fontSize: Math.max(12, Math.floor(cellSize * 0.55))
+                  }}
                   onClick={() => revealCell(rowIndex, colIndex)}
                   onContextMenu={(e) => toggleFlag(e, rowIndex, colIndex)}
                   onAuxClick={() => chordAction(rowIndex, colIndex)} // Middle click
@@ -529,10 +690,12 @@ function App() {
                       chordAction(rowIndex, colIndex)
                     }
                   }}
+                  onTouchStart={() => handleTouchStart(rowIndex, colIndex)}
+                  onTouchEnd={handleTouchEnd}
                   disabled={gameStatus === 'lost' || gameStatus === 'won'}
                   aria-label={`Cell at row ${rowIndex + 1}, column ${colIndex + 1}`}
                 >
-                  {getCellContent(cell)}
+                  {getCellContent2(cell)}
                 </button>
               ))}
             </div>

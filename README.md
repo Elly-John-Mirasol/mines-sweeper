@@ -6,18 +6,22 @@ A classic Minesweeper game built with React, React hooks, TypeScript, and Tailwi
 
 - Three difficulty levels: Beginner (9x9 with 10 mines), Intermediate (16x16 with 40 mines), and Expert (16x30 with 99 mines)
 - Left-click to reveal cells
-- Right-click to flag potential mines
+- Right-click to flag potential mines (cycles: flag → question → none)
+- Mobile long-press to flag
 - Number indicators showing adjacent mines
 - Game over when clicking on a mine
 - Win condition when all non-mine cells are revealed
 - Timer to track gameplay duration
 - Mine counter showing remaining unflagged mines
 - Animations for cell reveals, flagging, and game over
-- Responsive design that works on mobile and desktop
+- Responsive design that works on mobile and desktop (board auto‑scales)
 - Dark mode toggle
 - High score tracking
 - First-click protection (never hit a mine on first click)
 - Chord functionality (middle-click to reveal multiple cells)
+- Hints: reveal a random safe cell (Beginner: 3, Intermediate: 2, Expert: 1)
+- Keyboard shortcuts: R (restart), H (hint), 1/2/3 (difficulty), D (dark mode)
+- Reset best time per difficulty
 
 ## Technologies Used
 
