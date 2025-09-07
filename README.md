@@ -42,7 +42,7 @@ A classic Minesweeper game built with React, React hooks, TypeScript, and Tailwi
    ```
    npm run dev
    ```
-4. Open your browser and navigate to `http://localhost:5173`
+4. Open your browser and navigate to `http://localhost:3000`
 
 ## Development
 
