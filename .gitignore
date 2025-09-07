@@ -28,7 +28,7 @@ test-results/
 playwright-report/
 playwright/.cache/
 tests
-
+playwright.config.ts
 #Claude Files
 CLAUDE.md
 .claude
